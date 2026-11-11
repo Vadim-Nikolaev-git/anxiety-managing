@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Спокойно</title>
+<style>
+:root{
+  --bg:#13202a; --surface:#1c2d3a; --surface2:#243849; --text:#e7eff3; --muted:#90a7b5;
+  --accent:#7fcdc2; --accent-ink:#0d2a2a; --lilac:#b8a9ea; --line:#2c4254;
+  --serif:Georgia,'Times New Roman',serif; --sans:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);line-height:1.5;-webkit-font-smoothing:antialiased}
+body{min-height:100vh;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+#app{max-width:560px;margin:0 auto;padding:24px 20px 48px}
+h1,h2{font-family:var(--serif);font-weight:400;margin:0 0 .4em;letter-spacing:.01em}
+h1{font-size:2rem}h2{font-size:1.5rem}
+p{margin:0 0 .8em}.muted{color:var(--muted)}
+button{font:inherit;color:inherit;cursor:pointer;border:0;background:none}
+:focus-visible{outline:2px solid var(--lilac);outline-offset:3px}
+.btn{display:block;width:100%;padding:16px;border-radius:14px;background:var(--accent);color:var(--accent-ink);font-weight:600;font-size:1.05rem}
+.btn.ghost{background:var(--surface);color:var(--text)}
+.link{color:var(--muted);padding:8px 0;font-size:.95rem}
+.link:hover{color:var(--text)}
+.row{display:flex;gap:12px;align-items:center;justify-content:space-between}
+.card{display:block;width:100%;text-align:left;background:var(--surface);border-radius:18px;padding:18px 20px;margin-bottom:12px;border:1px solid transparent}
+.card:hover{border-color:var(--line);background:var(--surface2)}
+.card b{display:block;font-family:var(--serif);font-weight:400;font-size:1.15rem}
+.card span{color:var(--muted);font-size:.92rem}
+.scale{background:var(--surface);border-radius:22px;padding:22px 20px;margin:18px 0 26px}
+.num{font-family:var(--serif);font-size:4rem;line-height:1;text-align:center;margin:8px 0 14px}
+input[type=range]{width:100%;accent-color:var(--accent);height:32px}
+.ends{display:flex;justify-content:space-between;color:var(--muted);font-size:.85rem}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 20px}
+.chip{padding:10px 16px;border-radius:999px;background:var(--surface);border:1px solid var(--line)}
+.chip[aria-pressed=true]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600}
+.opt-label{margin-top:18px;color:var(--muted);font-size:.92rem}
+.note{background:var(--surface);border-left:3px solid var(--lilac);padding:12px 16px;border-radius:0 12px 12px 0;color:var(--muted);font-size:.92rem;margin:20px 0}
+textarea{width:100%;min-height:84px;border-radius:14px;border:1px solid var(--line);background:var(--surface);color:var(--text);padding:12px;font:inherit;resize:vertical;margin-bottom:18px}
+/* run */
+.run{display:flex;flex-direction:column;min-height:calc(100vh - 80px)}
+.stage{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:16px 0}
+.orb{width:min(72vw,300px);aspect-ratio:1;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  background:radial-gradient(circle at 38% 32%,#a6e6dc,#4fa8a0 62%,#2d6f73);box-shadow:0 0 70px rgba(127,205,194,.35);will-change:transform}
+.orb .ph{font-family:var(--serif);font-size:1.7rem;color:#08292b}
+.orb .cd{font-size:1.1rem;color:#0d3a3c;opacity:.85}
+.bigtxt{font-family:var(--serif);font-size:1.9rem;margin-bottom:.3em}
+.count{font-family:var(--serif);font-size:3.4rem;color:var(--accent)}
+.bar{height:4px;background:var(--surface);border-radius:2px;overflow:hidden;margin:10px 0 14px}
+.bar i{display:block;height:100%;width:0;background:var(--accent)}
+.foot{display:flex;gap:12px}.foot .btn{padding:13px}
+svg.flake{width:min(86vw,380px);height:auto}
+/* history */
+.stat{display:flex;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--line)}
+.sess{padding:14px 0;border-bottom:1px solid var(--line)}
+.delta{font-family:var(--serif);font-size:1.2rem}
+.down{color:var(--accent)}.up{color:#e9a0a0}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<main id="app"></main>
+<script>
+const app = document.getElementById('app');
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const KEY = 'anx_sessions_v1';
+const store = {
+  get(){ try { return JSON.parse(localStorage.getItem(KEY) || '[]'); } catch { return []; } },
+  set(a){ try { localStorage.setItem(KEY, JSON.stringify(a)); } catch {} },
+  add(s){ const a = this.get(); a.unshift(s); this.set(a); }
+};
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt = s => { s = Math.max(0, Math.ceil(s)); return Math.floor(s/60) + ':' + String(s%60).padStart(2,'0'); };
+const lerp = (a,b,t) => a + (b-a)*t;
+const smooth = t => t*t*(3-2*t);
+const sign = n => n > 0 ? '+' : n < 0 ? '−' : '';
+
+let S = { before: 5, ex: null, opt: {}, result: null };
+
+/* ---------- Упражнения ---------- */
+const BREATH = {
+  square: { name:'Квадрат', phases:[['Вдох',4,'in'],['Задержка',4,'full'],['Выдох',4,'out'],['Пауза',4,'empty']] },
+  long:   { name:'Выдох длиннее вдоха (4 : 6)', phases:[['Вдох',4,'in'],['Выдох',6,'out']] },
+  falcon: { name:'Дыхание сокола (1 : 7)', phases:[['Вдох',1,'in'],['Выдох',7,'out']] }
+};
+const JAC = [
+  ['Кисти и предплечья','Крепко сожми кулаки'],
+  ['Плечи','Подними плечи к ушам'],
+  ['Лицо','Зажмурь глаза, слегка сожми челюсти и наморщи лоб'],
+  ['Живот','Напряги мышцы живота, как перед лёгким ударом'],
+  ['Бёдра и ягодицы','Напряги бёдра и ягодицы, прижимаясь к сиденью'],
+  ['Икры и стопы','Мягко прижми стопы к полу и напряги икры'],
+  ['Спина','Слегка сведи лопатки назад'],
+  ['Всё тело','Напряги все группы сразу, затем отпусти']
+];
+const JAC_SHORT = [0,1,2,3,5];
+
+const EXERCISES = [
+  { id:'jacobson', name:'Мышечная релаксация по Джекобсону', desc:'Напрягаем и расслабляем мышцы по очереди', time:'5–12 мин',
+    note:'Напрягай примерно на 70% силы, без боли. Если есть травма или спазм в какой-то зоне, пропусти её.',
+    opts:[{k:'len',label:'Вариант',ch:[['short','Короткий, 5 групп'],['full','Полный, 8 групп']],def:'short'}] },
+  { id:'breath', name:'Дыхательные практики', desc:'Квадрат, выдох длиннее вдоха, дыхание сокола', time:'2–5 мин',
+    note:'Дыши сидя, без усилия. Если закружилась голова, вернись к обычному дыханию или нажми «Остановить».',
+    opts:[
+      {k:'p',label:'Практика',ch:[['square','Квадрат'],['long','Выдох длиннее'],['falcon','Сокол 1:7']],def:'square'},
+      {k:'k',label:'Темп сокола',showIf:o=>o.p==='falcon',ch:[[1,'Лёгкий, 1 + 7 с'],[2,'Средний, 2 + 14 с']],def:1},
+      {k:'m',label:'Длительность',ch:[[2,'2 мин'],[3,'3 мин'],[5,'5 мин']],def:3}
+    ] },
+  { id:'emdr', name:'Снежинка глазами', desc:'Движения глаз по четырём направлениям, голова неподвижна', time:'3–8 мин',
+    note:'Двигай только глаза, голову держи неподвижно, дыши ровно. По описанию автора упражнения его нельзя при эпилепсии, шизофрении и повышенном внутричерепном давлении, а также в первые 3 недели после инсульта или тяжёлой травмы головы. Если появились головокружение, головная боль или тошнота, останови упражнение.',
+    opts:[
+      {k:'sp',label:'Темп одного повтора',ch:[[3,'Медленно, 3 с'],[2,'Средне, 2 с'],[1.5,'Быстрее, 1,5 с']],def:2},
+      {k:'rd',label:'Количество кругов',ch:[[3,'3 круга'],[4,'4 круга']],def:3},
+      {k:'snd',label:'Звук',ch:[[0,'Без звука'],[1,'Щелчки влево и вправо']],def:0}
+    ] }
+];
+
+/* Каждое упражнение: make(opt) -> {total, mount(stage), update(el), destroy()} */
+const MAKERS = {
+  jacobson(o){
+    const idx = o.len === 'full' ? JAC.map((_,i)=>i) : JAC_SHORT;
+    const T = 5, R = 12, C = T + R, total = idx.length * C;
+    let els = {}, lastStep = -1;
+    return {
+      total,
+      mount(st){
+        st.innerHTML = '<div class="bigtxt" id="jn"></div><p class="muted" id="jd" style="max-width:30ch"></p>' +
+          '<div class="count" id="jp"></div><div class="muted" id="jc"></div>';
+        els = { n:st.querySelector('#jn'), d:st.querySelector('#jd'), p:st.querySelector('#jp'), c:st.querySelector('#jc') };
+      },
+      update(el){
+        const i = Math.max(0, Math.min(idx.length-1, Math.floor(el / C) || 0)), t = Math.max(0, el - i*C) || 0, g = JAC[idx[i]];
+        const tense = t < T;
+        els.n.textContent = g[0];
+        els.d.textContent = tense ? g[1] : 'Отпусти и почувствуй разницу. Дыши спокойно.';
+        els.p.textContent = tense ? 'Напряги' : 'Расслабь';
+        els.c.textContent = Math.ceil(tense ? T - t : C - t) + ' с, группа ' + (i+1) + ' из ' + idx.length;
+        const step = i*2 + (tense?0:1);
+        if (step !== lastStep) { lastStep = step; if (navigator.vibrate) navigator.vibrate(40); }
+      },
+      destroy(){}
+    };
+  },
+  breath(o){
+    const base = BREATH[o.p], k = o.p === 'falcon' ? Number(o.k) : 1;
+    const phases = base.phases.map(([n,s,t]) => [n, s*k, t]);
+    const cycle = phases.reduce((a,p)=>a+p[1],0), total = Math.max(1, Math.round(o.m*60/cycle)) * cycle;
+    let orb, ph, cd, lastIdx = -1;
+    const MIN = .45;
+    return {
+      total,
+      mount(st){
+        st.innerHTML = '<div class="orb" id="orb"><div class="ph" id="ph"></div><div class="cd" id="cd"></div></div>' +
+          '<p class="muted" style="margin-top:28px">' + esc(base.name) + '</p>';
+        orb = st.querySelector('#orb'); ph = st.querySelector('#ph'); cd = st.querySelector('#cd');
+      },
+      update(el){
+        let t = el % cycle, i = 0;
+        while (t >= phases[i][1]) { t -= phases[i][1]; i++; }
+        const [name, sec, type] = phases[i], p = t / sec;
+        let s = type==='in' ? lerp(MIN,1,smooth(p)) : type==='out' ? lerp(1,MIN,o.p==='falcon'?p:smooth(p)) : type==='full' ? 1 : MIN;
+        if (reduce) { orb.style.opacity = .5 + .5*((s-MIN)/(1-MIN)); s = .8; }
+        orb.style.transform = 'scale(' + s.toFixed(3) + ')';
+        ph.textContent = name; cd.textContent = Math.ceil(sec - t);
+        if (i !== lastIdx) { lastIdx = i; if (navigator.vibrate && (type==='in'||type==='out')) navigator.vibrate(25); }
+      },
+      destroy(){}
+    };
+  },
+  emdr(o){
+    // Снежинка глазами: четыре оси, на каждой 10 повторов туда-обратно, несколько кругов.
+    const P = Number(o.sp), ROUNDS = Number(o.rd), REPS = 10, GAP = 1.5, snd = Number(o.snd) === 1;
+    const AX = [
+      { name:'Вертикаль', hint:'Вверх и вниз', a:[0,-110], b:[0,110] },
+      { name:'Горизонталь', hint:'Влево и вправо', a:[-110,0], b:[110,0] },
+      { name:'Диагональ', hint:'Из левого верхнего угла в правый нижний', a:[-78,-78], b:[78,78] },
+      { name:'Вторая диагональ', hint:'Из правого верхнего угла в левый нижний', a:[78,-78], b:[-78,78] }
+    ];
+    const MOVE = REPS * P, SEG = MOVE + GAP, ROUND = SEG * 4, total = ROUND * ROUNDS;
+    let dot, lines = [], en, ec, ctx, lastKey = '';
+    const mix = (u, v, q) => [lerp(u[0], v[0], q), lerp(u[1], v[1], q)];
+    const click = pan => {
+      try {
+        const osc = ctx.createOscillator(), g = ctx.createGain(), pn = ctx.createStereoPanner();
+        osc.frequency.value = 520; pn.pan.value = pan;
+        g.gain.setValueAtTime(.0001, ctx.currentTime);
+        g.gain.exponentialRampToValueAtTime(.25, ctx.currentTime + .01);
+        g.gain.exponentialRampToValueAtTime(.0001, ctx.currentTime + .12);
+        osc.connect(g).connect(pn).connect(ctx.destination);
+        osc.start(); osc.stop(ctx.currentTime + .13);
+      } catch {}
+    };
+    return {
+      total,
+      mount(st){
+        const grid = AX.map((a, i) => '<line data-ax="' + i + '" x1="' + a.a[0] + '" y1="' + a.a[1] + '" x2="' + a.b[0] + '" y2="' + a.b[1] +
+          '" stroke="#3b5a70" stroke-width="2" stroke-linecap="round"/>').join('');
+        st.innerHTML = '<svg class="flake" viewBox="-135 -135 270 270" role="img" aria-label="Четыре направления движения глаз">' + grid +
+          '<circle id="fd" r="9" fill="#b8a9ea"/></svg>' +
+          '<div class="bigtxt" id="en" style="margin-top:12px"></div><div class="muted" id="ec"></div>';
+        dot = st.querySelector('#fd'); en = st.querySelector('#en'); ec = st.querySelector('#ec');
+        lines = Array.from(st.querySelectorAll('line'));
+        if (snd) { try { ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch {} }
+      },
+      update(el){
+        const r = Math.min(ROUNDS - 1, Math.floor(el / ROUND)), t1 = el - r * ROUND;
+        const ai = Math.min(3, Math.floor(t1 / SEG)), t = t1 - ai * SEG, ax = AX[ai];
+        let pos, activeAx = ai;
+        if (t < MOVE) {
+          const c = Math.floor(t / P), p = (t - c * P) / P;
+          pos = mix(ax.a, ax.b, (1 - Math.cos(2 * Math.PI * p)) / 2);
+          en.textContent = ax.name;
+          ec.textContent = ax.hint + '. Повтор ' + (c + 1) + ' из ' + REPS + ', круг ' + (r + 1) + ' из ' + ROUNDS;
+          const h = Math.floor(t / (P / 2)), key = r + ':' + ai + ':' + h;
+          if (key !== lastKey) {
+            lastKey = key;
+            if (ctx) click((h % 2 === 0 ? ax.a[0] : ax.b[0]) / 110 * .9);
+          }
+        } else {
+          const g = (t - MOVE) / GAP, nx = AX[(ai + 1) % 4];
+          pos = g < .5 ? mix(ax.a, [0, 0], smooth(g * 2)) : mix([0, 0], nx.a, smooth((g - .5) * 2));
+          en.textContent = 'Пауза';
+          ec.textContent = 'Дальше: ' + nx.name.toLowerCase() + '. Голова неподвижна, дыши ровно';
+          activeAx = -1;
+        }
+        dot.setAttribute('cx', pos[0].toFixed(1)); dot.setAttribute('cy', pos[1].toFixed(1));
+        lines.forEach((l, i) => l.setAttribute('stroke', i === activeAx ? '#7fcdc2' : '#3b5a70'));
+      },
+      destroy(){ if (ctx) try { ctx.close(); } catch {} }
+    };
+  }
+};
+
+/* ---------- Экраны ---------- */
+function home(){
+  app.innerHTML = `
+    <h1>Спокойно</h1>
+    <p class="muted">Оцени тревогу, выбери упражнение, потом оцени ещё раз.</p>
+    <div class="scale">
+      <div class="muted" style="text-align:center">Насколько тревожно сейчас?</div>
+      <div class="num" id="n">${S.before}</div>
+      <input type="range" id="r" min="0" max="10" step="1" value="${S.before}" aria-label="Уровень тревоги от 0 до 10">
+      <div class="ends"><span>0, спокойно</span><span>10, очень сильно</span></div>
+    </div>
+    ${EXERCISES.map(e => `<button class="card" data-id="${e.id}"><b>${esc(e.name)}</b><span>${esc(e.desc)}, ${esc(e.time)}</span></button>`).join('')}
+    <button class="link" id="hist">История и статистика</button>`;
+  const r = app.querySelector('#r'), n = app.querySelector('#n');
+  r.oninput = () => { S.before = +r.value; n.textContent = r.value; };
+  app.querySelectorAll('.card').forEach(b => b.onclick = () => setup(b.dataset.id));
+  app.querySelector('#hist').onclick = history;
+}
+
+function setup(id){
+  const ex = EXERCISES.find(e => e.id === id);
+  if (S.ex !== id) { S.ex = id; S.opt = {}; ex.opts.forEach(o => S.opt[o.k] = o.def); }
+  const draw = () => {
+    app.innerHTML = `
+      <button class="link" id="back">Назад</button>
+      <h2>${esc(ex.name)}</h2><p class="muted">${esc(ex.desc)}</p>
+      ${ex.opts.filter(o => !o.showIf || o.showIf(S.opt)).map(o => `
+        <div class="opt-label">${esc(o.label)}</div>
+        <div class="chips">${o.ch.map(([v,l]) => `<button class="chip" data-k="${o.k}" data-v="${v}" aria-pressed="${String(S.opt[o.k])===String(v)}">${esc(l)}</button>`).join('')}</div>`).join('')}
+      <div class="note">${esc(ex.note)}</div>
+      <button class="btn" id="go">Начать</button>`;
+    app.querySelector('#back').onclick = home;
+    app.querySelectorAll('.chip').forEach(c => c.onclick = () => {
+      const o = ex.opts.find(x => x.k === c.dataset.k);
+      S.opt[o.k] = typeof o.def === 'number' ? Number(c.dataset.v) : c.dataset.v;
+      draw();
+    });
+    app.querySelector('#go').onclick = () => run(ex);
+  };
+  draw();
+}
+
+let wake = null;
+async function lock(){ try { if (navigator.wakeLock) wake = await navigator.wakeLock.request('screen'); } catch {} }
+function unlock(){ try { wake && wake.release(); } catch {} wake = null; }
+
+function run(ex){
+  const inst = MAKERS[ex.id](S.opt);
+  app.innerHTML = `
+    <div class="run">
+      <div class="row"><span class="muted" id="left"></span><span class="muted">${esc(ex.name)}</span></div>
+      <div class="bar"><i id="bar"></i></div>
+      <div class="stage" id="stage"></div>
+      <div class="foot"><button class="btn ghost" id="pause">Пауза</button><button class="btn ghost" id="stop">Остановить</button></div>
+    </div>`;
+  inst.mount(app.querySelector('#stage'));
+  lock();
+  let el = 0, last = performance.now(), paused = false, raf, done = false;
+  const left = app.querySelector('#left'), bar = app.querySelector('#bar');
+  const finish = completed => {
+    if (done) return; done = true;
+    cancelAnimationFrame(raf); inst.destroy(); unlock();
+    after(ex, Math.round(el), Math.round(inst.total), completed);
+  };
+  const loop = now => {
+    now = performance.now();
+    let dt = (now - last) / 1000;
+    if (!isFinite(dt) || dt < 0) dt = 0;
+    dt = Math.min(dt, .25); last = now;
+    if (!paused) el += dt;
+    if (el >= inst.total) return finish(true);
+    inst.update(el);
+    left.textContent = 'Осталось ' + fmt(inst.total - el);
+    bar.style.width = (el / inst.total * 100) + '%';
+    raf = requestAnimationFrame(loop);
+  };
+  raf = requestAnimationFrame(loop);
+  const pb = app.querySelector('#pause');
+  pb.onclick = () => { paused = !paused; pb.textContent = paused ? 'Продолжить' : 'Пауза'; };
+  app.querySelector('#stop').onclick = () => finish(false);
+}
+
+function after(ex, secs, planned, completed){
+  let val = S.before;
+  app.innerHTML = `
+    <h2>${completed ? 'Готово' : 'Остановлено'}</h2>
+    <p class="muted">Как тревога сейчас?</p>
+    <div class="scale">
+      <div class="num" id="n">${val}</div>
+      <input type="range" id="r" min="0" max="10" step="1" value="${val}" aria-label="Уровень тревоги после упражнения">
+      <div class="ends"><span>0, спокойно</span><span>10, очень сильно</span></div>
+    </div>
+    <textarea id="note" placeholder="Заметка (необязательно): что чувствовал, что помогло"></textarea>
+    <button class="btn" id="save">Сохранить</button>`;
+  const r = app.querySelector('#r'), n = app.querySelector('#n');
+  r.oninput = () => { val = +r.value; n.textContent = val; };
+  app.querySelector('#save').onclick = () => {
+    const rec = { id: Date.now(), ts: new Date().toISOString(), ex: ex.id, opt: { ...S.opt },
+      sec: secs, planned, completed, before: S.before, after: val, note: app.querySelector('#note').value.trim() };
+    store.add(rec); S.result = rec; result();
+  };
+}
+
+function result(){
+  const r = S.result, d = r.after - r.before;
+  app.innerHTML = `
+    <h2>Итог</h2>
+    <div class="scale" style="text-align:center">
+      <div class="num">${r.before} → ${r.after}</div>
+      <div class="delta ${d<0?'down':d>0?'up':''}">${d===0 ? 'Без изменений' : 'Изменение: ' + sign(d) + Math.abs(d)}</div>
+    </div>
+    <p class="muted">Без изменений тоже нормально: эффект часто накапливается. Сравнивать упражнения удобнее на экране истории.</p>
+    <button class="btn" id="ok">На главную</button>`;
+  app.querySelector('#ok').onclick = () => { S.before = r.after; home(); };
+}
+
+function exName(id){ const e = EXERCISES.find(x => x.id === id); return e ? e.name : id; }
+function variant(s){
+  const o = s.opt || {};
+  if (s.ex === 'breath') return BREATH[o.p] ? BREATH[o.p].name + (o.p==='falcon' ? ', темп ' + o.k : '') : '';
+  if (s.ex === 'jacobson') return o.len === 'full' ? 'полный' : 'короткий';
+  if (s.ex === 'emdr') return (o.rd ? o.rd + ' круга, ' : '') + 'повтор ' + o.sp + ' с' + (Number(o.snd) ? ', со звуком' : '');
+  return '';
+}
+
+function history(){
+  const a = store.get();
+  const groups = {};
+  a.forEach(s => { const key = s.ex + (s.ex==='breath' ? ':' + (s.opt && s.opt.p) : ''); (groups[key] = groups[key] || []).push(s); });
+  const label = key => { const [id,p] = key.split(':'); return id === 'breath' && BREATH[p] ? BREATH[p].name : exName(id); };
+  const stats = Object.entries(groups).map(([key, list]) => {
+    const avg = list.reduce((t,s) => t + (s.after - s.before), 0) / list.length;
+    return `<div class="stat"><span>${esc(label(key))}<br><span class="muted">сессий: ${list.length}</span></span>
+      <span class="delta ${avg<0?'down':avg>0?'up':''}">${sign(avg)}${Math.abs(avg).toFixed(1)}</span></div>`;
+  }).join('');
+  app.innerHTML = `
+    <button class="link" id="back">Назад</button>
+    <h2>История</h2>
+    ${a.length ? `
+      <p class="muted">Среднее изменение тревоги по упражнениям (минус значит стало легче):</p>
+      ${stats}
+      <h2 style="margin-top:28px;font-size:1.2rem">Сессии</h2>
+      ${a.map(s => { const d = s.after - s.before; return `
+        <div class="sess"><div class="row"><span>${new Date(s.ts).toLocaleString('ru-RU',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}</span>
+          <span class="delta ${d<0?'down':d>0?'up':''}">${s.before} → ${s.after}</span></div>
+          <div>${esc(exName(s.ex))}</div>
+          <div class="muted">${esc(variant(s))}, ${fmt(s.sec)}${s.completed ? '' : ', прервано'}</div>
+          ${s.note ? `<div class="muted" style="margin-top:4px">${esc(s.note)}</div>` : ''}</div>`; }).join('')}
+      <div class="foot" style="margin-top:24px"><button class="btn ghost" id="json">Скачать JSON</button><button class="btn ghost" id="csv">Скачать CSV</button></div>
+      <button class="link" id="clear" style="margin-top:16px">Удалить всю историю</button>`
+    : '<p class="muted">Пока пусто. Пройди первое упражнение, и оно появится здесь.</p>'}`;
+  app.querySelector('#back').onclick = home;
+  if (!a.length) return;
+  const dl = (name, text, type) => { const u = URL.createObjectURL(new Blob([text], {type})); const l = document.createElement('a'); l.href = u; l.download = name; l.click(); URL.revokeObjectURL(u); };
+  app.querySelector('#json').onclick = () => dl('anxiety-history.json', JSON.stringify(a, null, 2), 'application/json');
+  app.querySelector('#csv').onclick = () => {
+    const q = v => '"' + String(v ?? '').replace(/"/g,'""') + '"';
+    const rows = [['date','exercise','variant','seconds','completed','before','after','note']].concat(
+      a.map(s => [s.ts, exName(s.ex), variant(s), s.sec, s.completed, s.before, s.after, s.note]));
+    dl('anxiety-history.csv', '\ufeff' + rows.map(r => r.map(q).join(',')).join('\n'), 'text/csv');
+  };
+  app.querySelector('#clear').onclick = () => { if (confirm('Удалить все сессии? Это нельзя отменить.')) { store.set([]); history(); } };
+}
+
+/* Любая ошибка выводится на экран с текстом, чтобы её можно было скопировать */
+function showError(msg){
+  try { unlock(); } catch {}
+  app.innerHTML = '<h2>Ошибка</h2><p class="muted">Скопируй текст ниже или сделай скриншот.</p>' +
+    '<pre style="white-space:pre-wrap;word-break:break-word;background:var(--surface);padding:14px;border-radius:12px;font-size:.85rem">' + esc(msg) + '</pre>' +
+    '<button class="btn" id="errback">На главную</button>';
+  app.querySelector('#errback').onclick = () => location.reload();
+}
+window.addEventListener('error', e => showError((e.message || 'Неизвестная ошибка') + (e.lineno ? '\nстрока ' + e.lineno : '')));
+window.addEventListener('unhandledrejection', e => showError(String(e.reason)));
+
+home();
+</script>
+</body>
+</html>
